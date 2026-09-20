@@ -15,11 +15,13 @@ RF24 radio(NRF_CE_PIN, NRF_CSN_PIN);
 const byte address[6] = "00001";
 
 // --- Estructura para los datos del Joystick ---
-struct DatosJoystick {
-  int16_t ejeX;  // int16_t es SIEMPRE de 2 bytes (16 bits)
-  int16_t ejeY;  // Igual que el 'int' del Arduino Nano
+struct __attribute__((packed)) DatosJoystick {
+  int16_t ejeX;
+  int16_t ejeY;
   bool boton;
 };
+static_assert(sizeof(DatosJoystick) == 5, "Tamaño de paquete inconsistente");
+
 DatosJoystick misDatos;
 
 
