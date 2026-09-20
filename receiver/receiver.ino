@@ -45,7 +45,7 @@ const int PWM_RESOLUTION = 8; // Resolución de 8 bits (0-255)
 
 // --- Compensación del motor B ---
 // Compensación en firmware del comportamiento irregular del motor B.
-// La causa real resultó ser ruido eléctrico acoplado al microcontrolador (ver README).
+// Apunta a ruido eléctrico acoplado al microcontrolador (ver README).
 const float COMPENSACION_MOTOR_B = 40.0f;
 
 // --- Función para controlar un motor ---
