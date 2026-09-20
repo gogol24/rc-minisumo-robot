@@ -162,7 +162,11 @@ void loop() {
     Serial.printf("JoyX:%4d Y:%4d  ->  A:%6.1f  B:%6.1f  |  Av:%5.0f Gi:%5.0f  giro:%+5.2f\n", 
                   misDatos.ejeX, misDatos.ejeY, velocidadMotorA, velocidadMotorB,cantidadAvance,cantidadGiro,giro);
     
-    if (velocidadMotorB) velocidadMotorB=((fabs(velocidadMotorB)-40)*velocidadMotorB/fabs(velocidadMotorB));
+    // Compensación del motor B, sin invertir el sentido en comandos bajos
+    if (velocidadMotorB) {
+      float magnitud = fmax(0.0f, fabs(velocidadMotorB) - 40.0f);
+      velocidadMotorB = copysign(magnitud, velocidadMotorB);
+    }
 
     // 5. Enviar los comandos finales a los motores
     moverMotor(PWMB_PIN, BIN1_PIN, BIN2_PIN, velocidadMotorB);
