@@ -20,11 +20,13 @@ const byte address[6] = "00001"; // Misma dirección que en el receptor
 
 // --- Estructura para los datos ---
 // Esta caja contendrá la información que enviaremos
-struct DatosJoystick {
-  int ejeX;
-  int ejeY;
+struct __attribute__((packed)) DatosJoystick {
+  int16_t ejeX;
+  int16_t ejeY;
   bool boton;
 };
+static_assert(sizeof(DatosJoystick) == 5, "Tamaño de paquete inconsistente");
+
 DatosJoystick misDatos;
 
 void setup() {
