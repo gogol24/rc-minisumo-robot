@@ -1,12 +1,14 @@
 /*
  * CÓDIGO RECEPTOR PARA ESP32-S3
- * Recibe los datos del joystick desde el Nano y los muestra.
+ * Recibe los datos del joystick desde el Nano y controla los motores.
  */
 
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
 #include <cstdint> // Incluir para los tipos de datos fijos
+
+// #define DEBUG  // Descomentar para imprimir telemetría por Serial
 
 // --- Configuración del nRF24L01+ ---
 #define NRF_CE_PIN  9
@@ -15,66 +17,39 @@ RF24 radio(NRF_CE_PIN, NRF_CSN_PIN);
 const byte address[6] = "00001";
 
 // --- Estructura para los datos del Joystick ---
+// Debe ser idéntica a la del transmisor: tipos de ancho fijo y sin relleno
 struct __attribute__((packed)) DatosJoystick {
   int16_t ejeX;
   int16_t ejeY;
   bool boton;
 };
 static_assert(sizeof(DatosJoystick) == 5, "Tamaño de paquete inconsistente");
-
 DatosJoystick misDatos;
 
-
-// =======================================================================
-//          ▼▼▼▼▼▼▼ ESTA ES LA SECCIÓN QUE CAMBIAMOS ▼▼▼▼▼▼▼
-// --- Configuración de pines para el driver TB6612FNG (NUEVA ASIGNACIÓN) ---
+// --- Configuración de pines para el driver TB6612FNG ---
 #define STBY_PIN 7
 
 // Motor A (Izquierdo)
 #define PWMA_PIN 4
-#define AIN1_PIN 6 // Cambiado
-#define AIN2_PIN 5 // Cambiado
+#define AIN1_PIN 6
+#define AIN2_PIN 5
 
 // Motor B (Derecho)
 #define PWMB_PIN 17
 #define BIN1_PIN 15
 #define BIN2_PIN 16
 
-//          ▲▲▲▲▲▲ FIN DE LA SECCIÓN MODIFICADA ▲▲▲▲▲▲
-// =======================================================================
-
-// ---------- Anti-jitter en salidas ----------
-const int DEADZONE_OUT = 10;   // zona muerta ±30
-const int HYST         = 10;   // histéresis extra
-const int MIN_DUTY     = 15;   // duty mínimo que mueve el motor
-
-int prevA = 0, prevB = 0;      // recuerdan el último comando
-
-int filtroSalida(int valor, int previo) {
-  // 1. zona muerta absoluta
-  //if (abs(valor) <= DEADZONE_OUT) return 0;
-
-  // 2. histéresis: si estaba parado, exige un poco más
-  if (previo == 0 && abs(valor) < (DEADZONE_OUT + HYST)) return 0;
-
-  // 3. asegurar par mínimo pero conservando proporción
-  int signo = (valor > 0) ? 1 : -1;
-  int magn  = abs(valor);
-  int duty  = map(magn, DEADZONE_OUT, 255, MIN_DUTY, 255);
-  return signo * constrain(duty, 0, 255);
-
-}
-
-
 // --- Configuración del PWM (LEDC) ---
 const int PWM_FREQ = 5000;    // Frecuencia en Hz para el PWM
 const int PWM_RESOLUTION = 8; // Resolución de 8 bits (0-255)
-const int PWM_CHANNEL_A = 0;  // Canal LEDC para motor A
-const int PWM_CHANNEL_B = 1;  // Canal LEDC para motor B
+
+// --- Compensación del motor B ---
+// Compensación en firmware del comportamiento irregular del motor B.
+// La causa real resultó ser ruido eléctrico acoplado al microcontrolador (ver README).
+const float COMPENSACION_MOTOR_B = 40.0f;
 
 // --- Función para controlar un motor ---
-// Recibe un motor (canal PWM) y una velocidad (-255 a 255)
-// ▼▼▼ FUNCIÓN CORREGIDA ▼▼▼
+// Recibe los pines de un motor y una velocidad (-255 a 255)
 void moverMotor(int pinPwm, int pinIn1, int pinIn2, float velocidad) {
   velocidad = constrain(velocidad, -255, 255);
 
@@ -93,12 +68,10 @@ void moverMotor(int pinPwm, int pinIn1, int pinIn2, float velocidad) {
     digitalWrite(pinIn2, LOW);
     ledcWrite(pinPwm, 0); // Detener el PWM en el PIN
   }
-      Serial.printf("V:%4.0f", 
-                  velocidad);
+#ifdef DEBUG
+  Serial.printf("V:%4.0f", velocidad);
+#endif
 }
-
-
-const float cuadrado=255.0f*255.0f;
 
 void setup() {
   Serial.begin(115200);
@@ -118,7 +91,7 @@ void setup() {
   digitalWrite(STBY_PIN, HIGH);
   
   // --- Inicializar la radio nRF24L01+ ---
-  Serial.println("Iniciando Receptor y Controlador de Motores (Pines Actualizados)...");
+  Serial.println("Iniciando Receptor y Controlador de Motores...");
   if (!radio.begin()) {
     Serial.println("Módulo nRF no responde. Deteniendo.");
     while (1) {}
@@ -158,20 +131,19 @@ void loop() {
     }
     
     // 4. Imprimir los datos para depuración
-
+#ifdef DEBUG
     Serial.printf("JoyX:%4d Y:%4d  ->  A:%6.1f  B:%6.1f  |  Av:%5.0f Gi:%5.0f  giro:%+5.2f\n", 
                   misDatos.ejeX, misDatos.ejeY, velocidadMotorA, velocidadMotorB,cantidadAvance,cantidadGiro,giro);
+#endif
     
     // Compensación del motor B, sin invertir el sentido en comandos bajos
     if (velocidadMotorB) {
-      float magnitud = fmax(0.0f, fabs(velocidadMotorB) - 40.0f);
+      float magnitud = fmax(0.0f, fabs(velocidadMotorB) - COMPENSACION_MOTOR_B);
       velocidadMotorB = copysign(magnitud, velocidadMotorB);
     }
 
     // 5. Enviar los comandos finales a los motores
     moverMotor(PWMB_PIN, BIN1_PIN, BIN2_PIN, velocidadMotorB);
     moverMotor(PWMA_PIN, AIN1_PIN, AIN2_PIN, velocidadMotorA);
-    // después de llamar al motor…
-
   }
 }
